@@ -1,7 +1,9 @@
 <script>
     import Header from '$lib/components/Header.svelte';
 
-    import Hero from '$views/landing/HeroShader.svelte';
+    import templeImg from '$assets/img/hero.jpg';
+
+    import Hero from '$views/landing/HeroNdot.svelte';
 </script>
 
 <svelte:head>
@@ -17,6 +19,6 @@
     </style>
 </svelte:head>
 
-<Hero />
-<Hero />
-
+<Hero imageSrc={templeImg} title="I'm Isa" subtitle="This is what I do"/>
+<Hero imageSrc={templeImg} title="Temple"/>
+<Hero imageSrc={templeImg} title="Temple"/>

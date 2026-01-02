@@ -1,68 +1,54 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import * as THREE from 'three';
-	import heroImage from '$assets/img/cpt.jpg';
+  import { onMount } from 'svelte';
+  import * as THREE from 'three';
 
-	let container: HTMLDivElement;
-	let scrollY = 0;
+  export let imageSrc: string;
+  export let title: string = "";
+  export let subtitle: string = "";
 
-	const MOBILE_DENSITY = 0.007; // Larger, chunkier characters for small screens
-	const DESKTOP_DENSITY = 0.005; // Fine, detailed characters for large screens
-	const BREAKPOINT = 768;
+  let container: HTMLDivElement;
+  let section: HTMLElement; // The reference to the section itself
+  let asciiOpacity = 0;
 
-	// CONFIG
-	const FADE_DISTANCE = 300;
-	const DENSITY = 0.007;
+  // CONFIG
+  const FADE_DISTANCE = 300; // Pixels of scrolling 'past' the top to fully fade
+  const DENSITY = 0.007;
 
-	$: asciiOpacity = Math.min(scrollY / FADE_DISTANCE, 1);
-
-	// --- (Insert Font Texture Helper Here if not imported) ---
-	// Keeping the helper function for copy-paste completeness
-	function createFontTexture() {
-		const canvas = document.createElement('canvas');
-		const size = 1024;
-		canvas.width = size;
-		canvas.height = size;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return null;
-		ctx.fillStyle = '#000000';
-		ctx.fillRect(0, 0, size, size);
-		ctx.fillStyle = '#ffffff';
-		const chars = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,^`' ."; //'.\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
-		const charSize = 64;
-		ctx.font = 'bold 64px monospace';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		for (let i = 0; i < 256; i++) {
-			const char = chars[Math.floor((i / 256) * chars.length)] || ' ';
-			const x = (i % 16) * charSize + charSize / 2;
-			const y = Math.floor(i / 16) * charSize + charSize / 2;
-			ctx.fillText(char, x, y);
-		}
-		const texture = new THREE.CanvasTexture(canvas);
-		texture.minFilter = THREE.NearestFilter;
-		texture.magFilter = THREE.NearestFilter;
-		return texture;
-	}
-	// --------------------------------------------------------
-
-	// Shader Code (Unchanged)
-	const VertexShader = `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  // --- (Insert createFontTexture Helper Here) ---
+  function createFontTexture() {
+    const canvas = document.createElement('canvas');
+    const size = 1024;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if(!ctx) return null;
+    ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#ffffff'; 
+    const chars = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+    const charSize = 64; 
+    ctx.font = 'bold 64px monospace'; 
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < 256; i++) {
+        const char = chars[Math.floor((i / 256) * chars.length)] || ' ';
+        const x = (i % 16) * charSize + charSize / 2;
+        const y = Math.floor(i / 16) * charSize + charSize / 2;
+        ctx.fillText(char, x, y);
     }
-  `;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.NearestFilter; texture.magFilter = THREE.NearestFilter;
+    return texture;
+  }
+  // ----------------------------------------------
 
-	const FragmentShader = `
-    uniform sampler2D tDiffuse;
-    uniform sampler2D tFont;
-    uniform float iResolutionX;
-    uniform float iResolutionY;
-    uniform float iDensity;
+  // --- SHADERS (Same as before) ---
+  const VertexShader = `
     varying vec2 vUv;
-
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `;
+  const FragmentShader = `
+    uniform sampler2D tDiffuse; uniform sampler2D tFont;
+    uniform float iResolutionX; uniform float iResolutionY; uniform float iDensity;
+    varying vec2 vUv;
     void main() {
       vec2 uv = vUv;
       float aspectRatio = iResolutionX / iResolutionY;
@@ -81,121 +67,130 @@
     }
   `;
 
-	onMount(() => {
-		// 1. Measure Container, NOT Window
-		// This is the key fix. It grabs the full 'lvh' height from CSS.
-		const width = container.clientWidth;
-		const height = container.clientHeight;
+  onMount(() => {
+    const width = container.clientWidth;
+    const height = container.clientHeight;
 
-		const scene = new THREE.Scene();
-		const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-		const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+    
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+    
+    camera.position.z = 10;
 
-		renderer.setSize(width, height);
-		renderer.setPixelRatio(window.devicePixelRatio);
-		container.appendChild(renderer.domElement);
+    let plane: THREE.Mesh;
+    const textureLoader = new THREE.TextureLoader();
+    const fontTexture = createFontTexture();
 
-		const cameraDistance = 10;
-		camera.position.z = cameraDistance;
+    const uniforms = {
+        tDiffuse: { value: null }, tFont: { value: fontTexture },
+        iResolutionX: { value: width }, iResolutionY: { value: height },
+        iDensity: { value: DENSITY }
+    };
 
-		let plane: THREE.Mesh;
-		const fontTexture = createFontTexture();
-		const textureLoader = new THREE.TextureLoader();
+    const resize = () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      uniforms.iResolutionX.value = w; uniforms.iResolutionY.value = h;
+      
+      // Responsive Density
+      //uniforms.iDensity.value = w < 768 ? 0.04 : 0.015;
 
-		const uniforms = {
-			tDiffuse: { value: null },
-			tFont: { value: fontTexture },
-			iResolutionX: { value: width },
-			iResolutionY: { value: height },
-			iDensity: { value: DESKTOP_DENSITY }
-		};
+      if (!plane || !uniforms.tDiffuse.value) return;
+      const img = uniforms.tDiffuse.value.image;
+      
+      const vFOV = THREE.MathUtils.degToRad(camera.fov);
+      const visH = 2 * Math.tan(vFOV / 2) * 10;
+      const visW = visH * camera.aspect;
+      const screenAsp = w / h;
+      const imgAsp = img.width / img.height;
 
-		// --- UPDATED RESIZE LOGIC ---
-		const resize = () => {
-			// Measure the CONTAINER, not the window
-			const newWidth = container.clientWidth;
-			const newHeight = container.clientHeight;
+      if (screenAsp > imgAsp) plane.scale.set(visW, visW / imgAsp, 1);
+      else plane.scale.set(visH * imgAsp, visH, 1);
+    };
 
-			camera.aspect = newWidth / newHeight;
-			camera.updateProjectionMatrix();
-			renderer.setSize(newWidth, newHeight);
+    textureLoader.load(imageSrc, (texture) => {
+      uniforms.tDiffuse.value = texture;
+      plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.ShaderMaterial({ uniforms, vertexShader: VertexShader, fragmentShader: FragmentShader, transparent: true })
+      );
+      scene.add(plane);
+      resize();
+    });
 
-			uniforms.iResolutionX.value = newWidth;
-			uniforms.iResolutionY.value = newHeight;
+    window.addEventListener('resize', resize);
 
-			if (!plane || !uniforms.tDiffuse.value) return;
+    // --- SCROLL LOGIC ---
+    let frameId: number;
+    function animate() {
+      frameId = requestAnimationFrame(animate);
 
-			const image = uniforms.tDiffuse.value.image;
-			const vFOV = THREE.MathUtils.degToRad(camera.fov);
-			const visibleHeight = 2 * Math.tan(vFOV / 2) * cameraDistance;
-			const visibleWidth = visibleHeight * camera.aspect;
+      if (section) {
+        // Get position relative to viewport
+        const rect = section.getBoundingClientRect();
+        
+        // Logic:
+        // rect.top > 0: Element is below top of screen (Entering or Centered) -> 0% Effect
+        // rect.top < 0: Element is going off screen (Leaving) -> Increase Effect
+        
+        const scrolledPast = -rect.top; // Positive number when scrolling down past element
+        
+        if (scrolledPast > 0) {
+            // We are scrolling past it, calculate fade
+            asciiOpacity = Math.min(scrolledPast / FADE_DISTANCE, 1);
+        } else {
+            // We haven't reached the top of this element yet
+            asciiOpacity = 0;
+        }
 
-			const screenAspect = newWidth / newHeight;
-			const imageAspect = image.width / image.height;
+        // OPTIMIZATION:
+        // 1. Only render if effect is visible (opacity > 0)
+        // 2. AND if the element is actually still on screen (rect.bottom > 0)
+        //    This stops it from rendering once it has scrolled completely off the top.
+        if (asciiOpacity > 0 && rect.bottom > 0) {
+            renderer.render(scene, camera);
+        }
+      }
+    }
+    animate();
 
-			if (screenAspect > imageAspect) {
-				plane.scale.set(visibleWidth, visibleWidth / imageAspect, 1);
-			} else {
-				plane.scale.set(visibleHeight * imageAspect, visibleHeight, 1);
-			}
-		};
-
-		textureLoader.load(heroImage, (texture) => {
-			uniforms.tDiffuse.value = texture;
-			const geometry = new THREE.PlaneGeometry(1, 1);
-			const material = new THREE.ShaderMaterial({
-				uniforms: uniforms,
-				vertexShader: VertexShader,
-				fragmentShader: FragmentShader,
-				transparent: true
-			});
-			plane = new THREE.Mesh(geometry, material);
-			scene.add(plane);
-			resize();
-		});
-
-		window.addEventListener('resize', resize);
-
-		function animate() {
-			requestAnimationFrame(animate);
-			if (asciiOpacity > 0) {
-				renderer.render(scene, camera);
-			}
-		}
-		animate();
-
-		return () => {
-			window.removeEventListener('resize', resize);
-			renderer.dispose();
-			if (container) container.innerHTML = '';
-		};
-	});
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameId);
+      renderer.dispose();
+      if (container) container.innerHTML = '';
+    };
+  });
 </script>
 
-<svelte:window bind:scrollY />
+<section bind:this={section} class="relative h-[100lvh] w-full overflow-hidden bg-gray-900 border-b border-gray-800">
+  
+  <img 
+    src={imageSrc} 
+    alt={title} 
+    class="absolute inset-0 z-0 h-full w-full object-cover"
+    style="opacity: {1 - asciiOpacity}; will-change: opacity;" 
+  />
 
-<section class="relative h-[100lvh] w-full overflow-hidden bg-black">
-	<img
-		src={heroImage}
-		alt="Hero Background"
-		class="absolute inset-0 z-0 h-full w-full object-cover"
-		style="opacity: {1 - asciiOpacity}; will-change: opacity;"
-	/>
+  <div 
+    bind:this={container} 
+    class="absolute inset-0 z-10 pointer-events-none"
+    style="opacity: {asciiOpacity}; will-change: opacity;"
+  ></div>
 
-	<div
-		bind:this={container}
-		class="pointer-events-none absolute inset-0 z-10"
-		style="opacity: {asciiOpacity}; will-change: opacity;"
-	></div>
+  <div class="relative z-20 h-[100svh] w-full pointer-events-none">
+    <div class="mx-auto flex h-full w-full flex-col justify-end items-start px-6 pb-24 md:pb-12 lg:max-w-[133.33vh]">
+      <div class="max-w-lg text-white pointer-events-auto">
+        <h1 class="text-5xl font-bold leading-tight mix-blend-difference">{title}</h1>
+        <p class="mt-4 text-xl text-gray-200 mix-blend-difference">{subtitle}</p>
+      </div>
+    </div>
+  </div>
 
-	<div class="pointer-events-none relative z-20 h-[100svh] w-full">
-		<div
-			class="mx-auto flex h-full w-full flex-col items-start justify-end px-6 pb-24 md:pb-12 lg:max-w-[133.33vh]"
-		>
-			<div class="pointer-events-auto max-w-lg text-white">
-				<h1 class="text-5xl leading-tight font-bold mix-blend-difference">Meow Meow Meow</h1>
-				<p class="mt-4 text-xl text-gray-200 mix-blend-difference">Woof Woof</p>
-			</div>
-		</div>
-	</div>
 </section>
